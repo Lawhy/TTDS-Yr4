@@ -1,3 +1,19 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:light
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.4'
+#       jupytext_version: 1.2.4
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
+
+import argparse
 import re
 import pandas as pd
 import numpy as np
@@ -11,11 +27,13 @@ class Lexicon:
     """ A class that stores a collection of processed documents
         and provides the methods of processing"""
     
-    def __init__(self, stemmer):
+    def __init__(self, xml_path, stop_words_path, stemmer):
         self.docs_df = pd.DataFrame(columns=['doc'])
         self.stop_words = []  
         self.stemmer = stemmer
         self.index = defaultdict(lambda: defaultdict(list))  # positional inverted index
+        self.load_xml(xml_path)
+        self.load_stop_words(stop_words_path)
         
         
     def load_xml(self, file):
@@ -118,12 +136,15 @@ class Lexicon:
                                 + ','.join(str(pos) for pos in pos_list)\
                                 + '\n')
                     f.write('\n')
-        
+
 
 if __name__ == '__main__':
-    lexicon = Lexicon(PorterStemmer())
-    lexicon.load_xml('data/trec.sample.xml')
-    lexicon.load_stop_words('data/englishST.txt')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--xml", type=str, help="the path to the xml file")
+    parser.add_argument("--st", type=str, help="the path to the stop words list")
+    args = parser.parse_args()
+    
+    lexicon = Lexicon(args.xml, args.st, PorterStemmer())
     lexicon.pos_inv_ind()
     with open('index.json', 'w+') as f:
         json.dump(lexicon.index, f)

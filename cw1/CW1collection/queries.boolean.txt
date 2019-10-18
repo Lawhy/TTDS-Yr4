@@ -1,0 +1,10 @@
+1 Happiness
+2 Edinburgh AND SCOTLAND
+3 income AND taxes
+4 "income taxes"
+5 #20(income, taxes)
+6 "middle east" AND peace
+7 "islam religion"
+8 "Financial times" AND NOT BBC
+9 "wall street" AND "dow jones"
+10 #15(dow,stocks)
