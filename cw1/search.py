@@ -1,8 +1,7 @@
 import argparse
 import re
-import pandas as pd
-import numpy as np
 import pickle
+import math
 from collections import deque, OrderedDict
 from nltk.stem import PorterStemmer
 
@@ -15,11 +14,11 @@ class Search:
                 (b) Proximity search (two terms);
                 (c) Phrasal search (two terms).
             3. Boolean Search (AND, OR, NOT)
-            4.   
+            4. IR ranking based on TF-IDF
     """
-    
-    
-    def __init__(self, index_path, stemmer):
+
+
+    def __init__(self, index_path, stop_words_path, stemmer):
         with open(index_path, 'rb') as f:
             self.index = pickle.load(f)
         self.stemmer = stemmer
@@ -27,12 +26,20 @@ class Search:
         for term in self.index.keys():
             doc_ids += list(self.index[term].keys())
         self.doc_ids = set(doc_ids)    # important for NOT search
-        
-            
+        self.N = len(self.doc_ids)
+        self.load_stop_words(stop_words_path)
+
+
+    def load_stop_words(self, file):
+        with open(file, 'r', encoding='utf-8-sig') as f:
+            # remove \n for each stop word
+            self.stop_words = [w.replace('\n', '') for w in f.readlines()]
+
+
     @staticmethod
     def shunting_yard(infix_tokens):
         """implementation of the Shunting Yard algorithm:
-           convert infix expression to postfix expression 
+           convert infix expression to postfix expression
 
         Args:
             infix_tokens (str): the infix expression as a list of tokens
@@ -43,7 +50,7 @@ class Search:
         """
 
         # define precedences
-        precedence = {'NOT': 3, 'AND': 2, 'OR': 1, '(': 0, ')': 0}   
+        precedence = {'NOT': 3, 'AND': 2, 'OR': 1, '(': 0, ')': 0}
 
         # declare data strucures
         output = []
@@ -72,10 +79,10 @@ class Search:
             elif token in precedence.keys():
                 # if operator stack is not empty
                 if operator_stack:
-                    # check the precedence of the last operator (most recently added), 
+                    # check the precedence of the last operator (most recently added),
                     # i.e. the most precedent operator in the stack
-                    last_operator = operator_stack[-1]              
-                    # while stack not empty and current token of lower precedence than ops in the stack 
+                    last_operator = operator_stack[-1]
+                    # while stack not empty and current token of lower precedence than ops in the stack
                     # (we must process the higher-precedence ops before adding a lower one)
                     while (operator_stack and precedence[last_operator] >= precedence[token]):
                         output.append(operator_stack.pop())
@@ -146,42 +153,42 @@ class Search:
                 i += 1
 
         return tokens
-    
-    
+
+
     def preprocess(self, tokens):
-        """apply casefolding & normalization""" 
-        
+        """apply casefolding & normalization"""
+
         return [self.stemmer.stem(t.lower()) for t in tokens]
-    
-    
+
+
     def parse_query(self, query, search='Proximity'):
         """extract information from the query"""
-        
+
         # if proximity query
         proximity_parse = re.findall(r'#([0-9]+?)\((.+?)\)', query)
         if search == 'Proximity':
             max_dist = int(proximity_parse[0][0])
             terms = self.preprocess(proximity_parse[0][1].split(','))
             return terms[0], terms[1], max_dist
-        
+
         # if phrasal query
         phrasal_parse = re.findall(r'\"(.+?)\"', query)
         if search == 'Phrasal':
             terms = self.preprocess(phrasal_parse[0].split(' '))
             # distance allowed is exactly 1
             return terms[0], terms[1], 1
-        
+
         return None
-    
-    
+
+
     def linear_merge(self, term1, term2, max_dist, search='Proximity'):
         """apply linear merge to the two posting lists"""
-        
+
         posting_lists = [self.index[term1], self.index[term2]]
         docNums = [deque(sorted(posting_lists[0].keys())), \
                    deque(sorted(posting_lists[1].keys()))]
         results = []
-        
+
         # apply linear merge
         # init the docNums pointers, cursor points to the current document, ref points the other
         cursor = 0
@@ -193,19 +200,19 @@ class Search:
         ref_doc_num = docNums[ref].popleft()
         # while the deques not empty
         while docNums[0] or docNums[1]:
-            
+
             if cur_doc_num > ref_doc_num:
                 # swap if current document ID is larger
                 cursor, ref = ref, cursor
-                cur_doc_num, ref_doc_num = ref_doc_num, cur_doc_num 
-            
+                cur_doc_num, ref_doc_num = ref_doc_num, cur_doc_num
+
             # move the cursor along docNums[cursor] until cur_doc_num >= ref_doc_num
             while cur_doc_num < ref_doc_num and docNums[cursor]:
                 cur_doc_num = docNums[cursor].popleft()
             # marginal case: docsNums[cursor] run out but cannot find larger doc_num
             if cur_doc_num < ref_doc_num and not docNums[cursor]:
                 break
-            
+
             if cur_doc_num == ref_doc_num:
                 # do the search if find the same doc ID on both sides
                 left_term_pos = posting_lists[0][cur_doc_num]
@@ -235,26 +242,26 @@ class Search:
                     # marginal case: if the cursor moves to the end, not necessary to traverse the rest of the refs
                     # cause they are always bigger
                     break
-                    
-        
+
+
         return results
-    
-    
+
+
     def existing(self, *words):
         """check if all the input words exist in the database"""
         for word in words:
             if not word in list(self.index.keys()):
                 return False
         return True
-        
-    
+
+
     def singleton_search(self, query):
         """apply single-term/proximity/phrasal search to the input singleton query
-        
+
            Returns:
                  [relevant documents' IDs]
         """
-        
+
         results = []
         if '#' in query:
             term1, term2, max_dist = self.parse_query(query, search='Proximity')
@@ -269,17 +276,17 @@ class Search:
             term = self.preprocess([query])[0]
             if self.existing(term):
                 results = sorted(list(self.index[term].keys()))
-        
+
         return results
-        
-        
+
+
     def boolean_search(self, query):
-        """apply general boolean search to the input query 
-        
+        """apply general boolean search to the input query
+
            Returns:
                  [relevant documents' IDs]
         """
-        
+
         results_stack = []
         postfix_queue = deque(Search.shunting_yard(Search.tokenize_query(query)))
         # print('Coverse to postfix expression: ', list(postfix_queue))
@@ -300,29 +307,29 @@ class Search:
             elif token == 'NOT':
                 right = set(results_stack.pop())
                 results_stack.append(sorted(list(self.doc_ids.difference(right))))
-                
+
         # at this stage, the results_stack should cotain only one list
         assert len(results_stack) == 1
         return results_stack[0]
-    
-    
+
+
     def boolean_search_multiple(self, query_path):
-        """apply general boolean search to the multiple queries 
-           contained in the input file of the format: 
+        """apply general boolean search to the multiple queries
+           contained in the input file of the format:
                QueryID Query
                QueryID Query
                ...
-               
+
            Args:
                query_path: the path to the input file containing queries
-               
+
            Outputs:
-               results.boolean.txt  
+               results.boolean.txt
         """
-        
+
         with open(query_path, 'r', encoding='utf-8-sig') as f:
             queries = f.readlines()
-            
+
         with open('results.boolean.txt', 'w+', encoding='utf-8') as o:
             pa = r'([0-9]+?) (.+?)\n'  # the regex of each query
             # preprocess each query
@@ -332,21 +339,21 @@ class Search:
                 results = self.boolean_search(query)  # a list of relevant document ids
                 for doc_id in results:
                     o.write('{} 0 {} 0 1 0\n'.format(queryID, doc_id))
-                    
-                    
+
+
     """ ---------- Below implements the IR by ranking based on TF-IDF ---------- """
     def _tf(self, term, docID):
         """calculate the term frequency of a paricular term in a particular document"""
-        term = self.stemmer.stem(term.lower())
+        # term = self.stemmer.stem(term.lower())
         return len(self.index[term][docID])
-    
-    
+
+
     def _df(self, term):
         """calculate the document frequency of a particular term"""
-        term = self.stemmer.stem(term.lower())
+        # term = self.stemmer.stem(term.lower())
         return len(self.index[term].keys())
-    
-    
+
+
     def _weight(self, term, docID):
         """calculate the weight assigned to a particular term given a particular document:
            Formula:
@@ -354,41 +361,42 @@ class Search:
         """
         tf = self._tf(term, docID)
         df = self._df(term)
-        N = len(self.doc_ids)
-        return (1 + np.log10(tf)) * np.log10(N / float(df))
-    
-    
+        N = self.N
+        return (1 + math.log10(tf)) * math.log10(N / float(df))
+
+
     def _tokenize(self, query):
         """apply same tokenization as in building the index
            the difference is this time we do not need the stop_word list as we have our index ready
         """
-        tokens = self.preprocess(re.findall(r'\w+', query))
-        tokens = [token for token in tokens if token in list(self.index.keys())]
+        tokens = re.findall(r'\w+', query)
+        tokens = [self.stemmer.stem(t.lower()) for t in tokens \
+                    if not t.lower() in self.stop_words]
         return tokens
-    
-    
+
+
     def _score(self, query, docID):
         """calculate the retrieval score of a query w.r.t a document
            Formula:
                Score(q, d) = \sum_(t \in q and t \in d) w_{t, d}
         """
         tokens = self._tokenize(query)
-        weights = []
+        score = 0
         for term in tokens:
-            # check whether or not the document contains the current term 
+            # check whether or not the document contains the current term
             # otherwise tf will be zero, rendering exception in log10
             if docID in self.index[term]:
-                weights.append(self._weight(term, docID))
-                
-        return sum(weights)
-    
-    
+                score += self._weight(term, docID)
+
+        return score
+
+
     def _extract_relevant(self, query):
         """extract relevant documents of terms in the query"""
         tokens = self._tokenize(query)
-        return list(set().union(*(list(self.index[t].keys()) for t in tokens)))
-    
-    
+        return sorted(list(set().union(*(list(self.index[t].keys()) for t in tokens))))
+
+
     def _ranking(self, query):
         """give rankings of documents based on Score(q, d)"""
         scores_dict = dict()
@@ -396,14 +404,14 @@ class Search:
         for docID in self._extract_relevant(query):
             scores_dict[docID] = self._score(query, docID)
         return OrderedDict(sorted(scores_dict.items(), key=lambda kv: kv[1], reverse=True))
-    
-    
+
+
     def ranked_retrieval(self, query_path, max_keep=1000):
         """generate results.ranked.txt"""
-        
+
         with open(query_path, 'r', encoding='utf-8') as f:
             queries = f.readlines()
-            
+
         with open('results.ranked.txt', 'w+', encoding='utf-8') as r:
             pa = r'([0-9]+?) (.+?)\n'  # the regex of each query
             for query in queries:
@@ -411,7 +419,7 @@ class Search:
                 print('------Generating the rankings for the query {}------'.format(queryID))
                 print(query)
                 ranked_dict = self._ranking(query)
-                count = 0  # trace how many examples kept for each 
+                count = 0  # trace how many examples kept for each
                 for docID, score in ranked_dict.items():
                     if count < max_keep:
                         r.write("{} 0 {} 0 {:.4f} 0\n".format(queryID, docID, score))
@@ -419,14 +427,16 @@ class Search:
                     else:
                         break
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--index", type=str, help="the path to the binary index")
     parser.add_argument("--search", type=str, help="the search type: {bool, rank}")
     parser.add_argument("--query", type=str, help="the path to the query file")
+    parser.add_argument("--st", type=str, help="the path to the stop-words list")
     args = parser.parse_args()
-    
-    search = Search(args.index, PorterStemmer())
+
+    search = Search(args.index, args.st, PorterStemmer())
     if args.search == 'bool':
         search.boolean_search_multiple(args.query)
     elif args.search == 'rank':
