@@ -1,30 +1,16 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:light
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.4'
-#       jupytext_version: 1.2.4
-#   kernelspec:
-#     display_name: Python 3
-#     language: python
-#     name: python3
-# ---
-
 import argparse
 import re
 import pandas as pd
 import numpy as np
 import xml.etree.ElementTree as ET
 import json
+import pickle
 from nltk.stem import PorterStemmer
 from collections import defaultdict, OrderedDict
 
 
 class Lexicon:
-    """ A class that stores a collection of processed documents
+    """ A class that stores a collection of processed documentsl
         and provides the methods of processing"""
     
     def __init__(self, xml_path, stop_words_path, stemmer):
@@ -117,7 +103,7 @@ class Lexicon:
                        docID: pos1, pos2, ...
                        docID: pos1, pos2, ...
                 """ 
-                self.index[tokens[pos]][i] += [pos + 1]  # position starts from 1
+                self.index[tokens[pos]][int(i)] += [pos + 1]  # position starts from 1
         # sort the index by keys
         self.index = OrderedDict(sorted(self.index.items()))
         print('Finished.') 
@@ -146,6 +132,6 @@ if __name__ == '__main__':
     
     lexicon = Lexicon(args.xml, args.st, PorterStemmer())
     lexicon.pos_inv_ind()
-    with open('index.json', 'w+') as f:
-        json.dump(lexicon.index, f)
+    with open('index.pkl', 'wb') as f:
+        pickle.dump(lexicon.index, f)
     lexicon.export_index()
