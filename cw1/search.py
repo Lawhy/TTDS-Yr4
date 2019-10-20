@@ -87,7 +87,7 @@ class Search:
                     while (operator_stack and precedence[last_operator] >= precedence[token]):
                         output.append(operator_stack.pop())
                         if (operator_stack):
-                            current_operator = operator_stack[-1]
+                            last_operator = operator_stack[-1]
 
                 operator_stack.append(token) # add token to stack
 
