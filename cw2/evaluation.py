@@ -146,14 +146,17 @@ class Eval:
     def evaluate_all(self, total_num_of_queries):
         """evaluate all queries using all required metrics for the current system"""
         df = pd.DataFrame(columns=['P@10', 'R@50', 'r-Precision', 'AP', 'nDCG@10', 'nDCG@20'])
-        df['P@10'] = self.to_decimal(self.evaluate(self.p_at_N, total_num_of_queries, arg=10))
-        df['R@50'] = self.to_decimal(self.evaluate(self.r_at_N, total_num_of_queries, arg=50))
-        df['r-Precision'] = self.to_decimal(self.evaluate(self.r_precision, total_num_of_queries))
-        df['AP'] = self.to_decimal(self.evaluate(self.average_precision, total_num_of_queries))
-        df['nDCG@10'] = self.to_decimal(self.evaluate(self.nDCG_at_k, total_num_of_queries, arg=10))
-        df['nDCG@20'] = self.to_decimal(self.evaluate(self.nDCG_at_k, total_num_of_queries, arg=20))
+        df['P@10'] = self.evaluate(self.p_at_N, total_num_of_queries, arg=10)
+        df['R@50'] = self.evaluate(self.r_at_N, total_num_of_queries, arg=50)
+        df['r-Precision'] = self.evaluate(self.r_precision, total_num_of_queries)
+        df['AP'] = self.evaluate(self.average_precision, total_num_of_queries)
+        df['nDCG@10'] = self.evaluate(self.nDCG_at_k, total_num_of_queries, arg=10)
+        df['nDCG@20'] = self.evaluate(self.nDCG_at_k, total_num_of_queries, arg=20)
         df.index = [i+1 for i in range(10)]
-        df.loc['mean'] = self.to_decimal(df.mean())
+        df.loc['mean'] = df.mean()
+        # let all numbers in the data frame to be in 3 decimal places
+        for ind, _ in df.iterrows():
+            df.loc[ind] = self.to_decimal(df.loc[ind])
         return df
     
     @staticmethod
@@ -171,23 +174,29 @@ class Eval:
             for i, dp in df.iterrows():
                 f.write('\t'.join([str(i)] + [str(d) for d in dp]) + '\n')
                 
-    def output_eval_results_all(self, total_num_of_queries):
+    def output_eval_results_all(self, total_num_of_queries, system_results_path):
         """generate evaluation results in a output file for all systems"""
-        return
+        with open('All.eval', 'w+', encoding='utf-8') as f:
+            f.write('\t' + '\t'.join(['P@10', 'R@50', 'r-Precision', 'AP', 'nDCG@10', 'nDCG@20']) + '\n')
+            for i in range(1, 7):
+                self.current_system_results = self.read_system_results(system_results_path + '/S' + str(i) + '.results')
+                mean_scores = self.evaluate_all(total_num_of_queries).loc['mean']
+                f.write('S' + str(i) + '\t' + '\t'.join(str(s) for s in mean_scores) + '\n')
 
-                
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--relevant_docs_file', 
                         type=str, help='path to qrels.txt')
     parser.add_argument('--system_results',
                         type=str, help='path to system results')
-    parser.add_argument('--all',
-                        type=str, help='determine whether generate individual result or all')
+    parser.add_argument('--system_num',
+                        type=str, help='if set \"all\", means generate all results')
     args = parser.parse_args()
-    print(args.all)
-    if not bool(args.all):
-        sys_num = re.findall('S([0-9]+?).results', args.system_results)[0]
-        e = Eval(relevant_docs_file = args.relevant_docs_file)
-        e.current_system_results = e.read_system_results(args.system_results)
+    sys_num = args.system_num
+    e = Eval(relevant_docs_file = args.relevant_docs_file)
+    if not sys_num == 'all':
+        e.current_system_results = e.read_system_results(args.system_results + '/S' + sys_num + '.results')
         e.output_eval_results(10, int(sys_num))
+    else:
+        e.output_eval_results_all(10, system_results_path=args.system_results)
