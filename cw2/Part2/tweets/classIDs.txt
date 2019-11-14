@@ -1,0 +1,14 @@
+Autos & Vehicles	1
+Comedy	2
+Education	3
+Entertainment	4
+Film & Animation	5
+Gaming	6
+Howto & Style	7
+Music	8
+News & Politics	9
+Nonprofits & Activism	10
+Pets & Animals	11
+Science & Technology	12
+Sports	13
+Travel & Events	14
