@@ -143,7 +143,7 @@ class Eval:
         else:
             return [metric(query_num + 1) for query_num in range(total_num_of_queries)]
         
-    def evaluate_all(self, total_num_of_queries):
+    def evaluate_all(self, total_num_of_queries, rounding=True):
         """evaluate all queries using all required metrics for the current system"""
         df = pd.DataFrame(columns=['P@10', 'R@50', 'r-Precision', 'AP', 'nDCG@10', 'nDCG@20'])
         df['P@10'] = self.evaluate(self.p_at_N, total_num_of_queries, arg=10)
@@ -155,8 +155,9 @@ class Eval:
         df.index = [i+1 for i in range(10)]
         df.loc['mean'] = df.mean()
         # let all numbers in the data frame to be in 3 decimal places
-        for ind, _ in df.iterrows():
-            df.loc[ind] = self.to_decimal(df.loc[ind])
+        if rounding:
+            for ind, _ in df.iterrows():
+                df.loc[ind] = self.to_decimal(df.loc[ind])
         return df
     
     @staticmethod
